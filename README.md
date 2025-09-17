@@ -2,17 +2,17 @@
 
 A Python-based simulation toolkit for exploring quantum systems such as:
 
-- Single qubit dynamics
+- Single/Two qubit dynamics
 - Spin chains
 - Quantum phase transitions
 
 ## Features
-- Time-dependent Hamiltonians
+- Time-dependent Hamiltonians (oscillating fields, pulses, etc)
 - Entanglement entropy
 - Mutual information plots
 
 ## Requirements
-- Python 3.8+
+- Python
 - QuTiP
 - NumPy
 - Matplotlib
