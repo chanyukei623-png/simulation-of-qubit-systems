@@ -1,0 +1,503 @@
+"""
+Created on Wed Sep 17 14:42:21 2025
+
+@author: yukei
+"""
+
+import matplotlib.pyplot as plt
+import numpy as np
+from qutip import *
+
+#%%
+# ===========================
+# Single Qubit Driven by Oscillating Field / Square Pulse / Gaussian Pulse
+# ===========================
+
+# Define basic qubit states and operators
+sx = sigmax()
+sy = sigmay()
+sz = sigmaz()
+id2 = qeye(2)
+zero = basis(2, 0)
+one = basis(2, 1)
+psi0= one
+
+# Time parameters
+t = np.linspace(0, 20, 1000)
+w = 20  # driving frequency (resonance: w=2*H0)
+t_pulse = np.pi  # pulse duration
+t0 = 5          # Gaussian pulse center
+sigma = 1       # Gaussian sigma
+
+# Time-dependent Hamiltonian: H(t) = sz + cos(wt) * sx
+H0 = -10 * sz
+H1 = 1 * sx
+
+def osci(t, args):
+    return np.cos(w * t)
+
+def pulse(t, args):
+    return 1.0 if t <= t_pulse else 0.0
+
+def gaussian(t, args):
+    return np.exp(-(t - t0)**2 / (2 * sigma**2))
+
+# Choose Hamiltonian with time-dependent term (oscillating)
+H = [H0, [H1, osci]]
+
+# Observable: projection onto excited state |1><1|
+proj1 = one * one.dag()
+
+# Decoherence parameters
+gamma1 = 0      # Relaxation rate (T1)
+gamma11 = 1
+gamma_phi = 0   # Dephasing rate (T2)
+gamma_phi1 = 0.1
+
+# Collapse operators
+c_ops = [
+    np.sqrt(gamma1) * destroy(2),  # T1 decay: |1> -> |0>
+    np.sqrt(gamma_phi) * sz         # T2 dephasing
+]
+c_ops1 = [
+    np.sqrt(gamma11) * destroy(2),
+    np.sqrt(gamma_phi) * sz
+]
+c_ops2 = [
+    np.sqrt(gamma1) * destroy(2),
+    np.sqrt(gamma_phi1) * sz
+]
+
+# Solve master equation with different decoherence channels
+result = mesolve(H, psi0, t, c_ops=c_ops, e_ops=[proj1])
+result_bloch = mesolve(H, psi0, t, c_ops, e_ops=[sx, sy, -sz])
+result1 = mesolve(H, psi0, t, c_ops=c_ops1, e_ops=[proj1])  # T1 decoherence
+result2 = mesolve(H, psi0, t, c_ops=c_ops2, e_ops=[proj1])  # T2 decoherence
+result_fid = mesolve(H, psi0, t, [], [])  # No decoherence, for fidelity
+
+# Extract Bloch vector expectation values
+x, y, z = result_bloch.expect
+
+# Plot excited state populations over time for different decoherence types
+plt.plot(t, result.expect[0], label='Excited State Population')
+plt.plot(t, result1.expect[0], label='Excited State Population, T1')
+plt.plot(t, result2.expect[0], label='Excited State Population, T2')
+plt.xlabel("Time")
+plt.ylabel("Probability in |1⟩")
+plt.title("Driven Qubit with Decoherence (T₁ + T₂)")
+plt.grid(True)
+plt.legend()
+plt.show()
+
+#%%
+# ===========================
+# Bloch Sphere Trajectory Plot
+# ===========================
+
+from mpl_toolkits.mplot3d import Axes3D
+
+fig = plt.figure(figsize=(6, 6))
+ax = fig.add_subplot(111, projection='3d')
+
+# Draw Bloch sphere surface
+u, v = np.mgrid[0:2*np.pi:60j, 0:np.pi:30j]
+bx = np.cos(u) * np.sin(v)
+by = np.sin(u) * np.sin(v)
+bz = np.cos(v)
+ax.plot_surface(bx, by, bz, color='lightblue', alpha=0.1)
+
+# Color by length of Bloch vector
+length = np.sqrt(x**2 + y**2 + z**2)
+colors = plt.cm.viridis(length)  # Colormap for colors
+
+# Plot Bloch vector trajectory points
+for i in range(len(t)):
+    ax.scatter(x[i], y[i], z[i], color=colors[i], s=10)
+
+# Connect points with a faint red line
+ax.plot(x, y, z, color='red', linewidth=1.5, alpha=0.3)
+
+# Colorbar for Bloch vector length
+sm = plt.cm.ScalarMappable(cmap='viridis')
+sm.set_array(length)
+plt.colorbar(sm, ax=ax, shrink=0.5, aspect=10, label='Bloch Vector Length')
+
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('Bloch Sphere Trajectory')
+ax.legend()
+plt.tight_layout()
+plt.show()
+
+#%%
+# ===========================
+# Fidelity to Target State |0⟩ Over Time
+# ===========================
+
+plt.figure()
+psi_target = zero  # Target state |0⟩
+fidelity_over_time = [fidelity(psi_target, state) for state in result_fid.states]
+plt.plot(t, fidelity_over_time)
+plt.title("Fidelity to |0⟩ over Time")
+plt.xlabel("Time")
+plt.ylabel("Fidelity")
+plt.grid(True)
+plt.show()
+
+#%%
+# ===========================
+# Rotating Frame 
+# ===========================
+
+psi0 = one
+zero_rot = mesolve(H0, zero, t, c_ops=c_ops).states
+one_rot = mesolve(H0, one, t, c_ops=c_ops).states    
+state = mesolve(H, psi0, t, c_ops=c_ops).states
+
+expectation = []  # Expectation of projection onto rotated |0(t)><0(t)|
+for i, k in enumerate(t):
+    psi_t = state[i]
+    zero_rot_t = zero_rot[i]
+    overlap = zero_rot_t.dag() * psi_t
+    val = abs(overlap.full()[0, 0])**2
+    expectation.append(val)
+
+plt.figure()
+plt.plot(t, expectation)
+plt.xlabel('Time')
+plt.ylabel('Expectation of P(t) = |0(t)><0(t)|')
+plt.show()
+
+#%%
+# ===========================
+# Two Qubit System with Time-Dependent Drive and Decoherence
+# ===========================
+
+I = qeye(2)
+sx = sigmax()
+sz = sigmaz()
+
+# Basis states
+zero = basis(2, 0)
+one = basis(2, 1)
+
+# Tensor product operators for 2-qubit system
+sx1 = tensor(sx, I)  # σx on qubit 1
+sx2 = tensor(I, sx)  # σx on qubit 2
+sz1 = tensor(sz, I)  # σz on qubit 1
+sz2 = tensor(I, sz)  # σz on qubit 2
+
+# Time-dependent drive field
+w = 1  # drive frequency
+def f2(t):
+    return np.cos(w * t)
+
+# Hamiltonian parameters
+E0 = 1   # energy splitting (qubit freq)
+E1 = 1   # drive amplitude
+J = 1    # interaction strength
+
+# Static Hamiltonian parts
+H0 = -E0 * (sz1 + sz2)
+H_int = J * tensor(sx, sx)  # σx⊗σx interaction
+
+# Full Hamiltonian with time-dependent drives on both qubits
+H = [H0 + H_int,
+     [E1 * sx1, f2],
+     [E1 * sx2, f2]]
+
+# Initial state |10⟩ (qubit 1 in |1>, qubit 2 in |0>)
+psi0 = tensor(one, zero)
+
+# Decoherence channels (T1 and T2 for both qubits)
+g1 = 1       # qubit 1 relaxation
+g1_phi = 1   # qubit 1 dephasing
+g2 = 1       # qubit 2 relaxation
+g2_phi = 1   # qubit 2 dephasing
+
+c_ops = [
+    np.sqrt(g1) * tensor(destroy(2), I),
+    np.sqrt(g1_phi) * tensor(sz, I),
+    np.sqrt(g2) * tensor(I, destroy(2)),
+    np.sqrt(g2_phi) * tensor(I, sz)
+]
+
+# Measurement projectors onto |1> states
+proj11 = tensor(one * one.dag(), I)  # qubit 1
+proj21 = tensor(I, one * one.dag())  # qubit 2
+
+# Time array
+t = np.linspace(0, 20, 1000)
+
+# Solve master equation
+result0 = mesolve(H, psi0, t, c_ops, e_ops=[proj11, proj21])  # Population expectation
+result1 = mesolve(H, psi0, t, c_ops, [])                       # For entropy calculation
+
+# Compute von Neumann entropy of qubit 1 over time
+entropy = [entropy_vn(state.ptrace(0)) for state in result1.states]
+
+# Plot populations
+plt.figure()
+plt.plot(t, result0.expect[0], label='Qubit 1: P(|1⟩)')
+plt.plot(t, result0.expect[1], label='Qubit 2: P(|1⟩)')
+plt.xlabel('Time')
+plt.ylabel('Population')
+plt.title('Two-Qubit System Populations with Decoherence')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Plot entropy of qubit 1
+plt.figure()
+plt.plot(t, entropy, label='Entropy (Qubit 1)')
+plt.xlabel('Time')
+plt.ylabel('von Neumann Entropy')
+plt.title('Entropy of Qubit 1 Reduced Density Matrix')
+plt.grid(True)
+plt.legend()
+plt.show()
+
+#%%
+# --- Spin Chain (XXZ with Fields) ---
+# Simulates time evolution of a 1D XXZ spin chain under local fields,
+# computes magnetization and entanglement dynamics.
+
+# Parameters
+N = 10            # Number of qubits
+J = -1            # Coupling strength (antiferromagnetic)
+Delta = 1         # Anisotropy in Z-direction
+hx = 0.5          # Transverse field in X
+hz = 0.8          # Longitudinal field in Z
+
+# Pauli operators and identity
+I = qeye(2)
+sx = sigmax()
+sy = sigmay()
+sz = sigmaz()
+
+# Time grid
+t = np.linspace(0, 100, 1000)
+
+# Helper function: insert Pauli op at site i in N-site tensor product
+def pauli_add(op, i, N):
+    op_list = [I] * N
+    op_list[i] = op
+    return tensor(op_list)
+
+# Build XXZ Hamiltonian with external fields
+H = 0
+for i in range(N - 1):
+    H += J * pauli_add(sx, i, N) * pauli_add(sx, i + 1, N)
+    H += J * pauli_add(sy, i, N) * pauli_add(sy, i + 1, N)
+    H += J * Delta * pauli_add(sz, i, N) * pauli_add(sz, i + 1, N)
+
+for i in range(N):
+    H += hx * pauli_add(sx, i, N)
+    H += -hz * pauli_add(sz, i, N)
+
+# Initial state: only first qubit spin up, others down
+state0 = [basis(2, 1 if i == 0 else 0) for i in range(N)]
+psi0 = tensor(state0)
+
+# Time evolution
+result = mesolve(H, psi0, t, [], [])
+
+# Observables
+exp_z = []             # ⟨σ_z⟩ per site
+entropy_list = []      # Von Neumann entropy of qubit 0
+
+for psi_t in result.states:
+    rho_sub = psi_t.ptrace(0)
+    S = entropy_vn(rho_sub)
+    entropy_list.append(S)
+
+for i in range(N):
+    sz_i = pauli_add(sz, i, N)
+    exp_z.append(expect(sz_i, result.states))
+
+# Prepare 3D surface plot data
+t_min = 95
+mask = t > t_min
+t1 = t[mask]
+Q, T = np.meshgrid(range(N), t1)
+Z0 = np.array(exp_z).T
+Z = Z0[mask, :]
+
+# Plot magnetization ⟨σ_z⟩ per site
+plt.figure(figsize=(10, 6))
+for i in range(N):
+    plt.plot(t, exp_z[i], label=f'Qubit {i+1}')
+plt.xlabel("Time")
+plt.ylabel("⟨σ_z⟩")
+plt.title(f"Magnetization Dynamics in {N}-Qubit XXZ Spin Chain")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Plot entanglement entropy of qubit 0
+plt.figure()
+plt.plot(t, entropy_list)
+plt.xlabel("Time")
+plt.ylabel("Von Neumann Entropy of Qubit 0")
+plt.title("Entanglement Entropy Dynamics")
+plt.show()
+
+# 3D surface plot: ⟨σ_z⟩ vs time and site
+fig = plt.figure(figsize=(10, 7))
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(Q, T, Z, cmap='viridis', edgecolor='none', alpha=0.8)
+ax.set_xlabel('Qubit Number')
+ax.set_ylabel('Time')
+ax.set_zlabel(r'$\langle \sigma_z \rangle$')
+ax.set_title('Spin Expectation vs Qubit and Time')
+plt.show()
+
+#%%
+# --- Ising Model (Transverse Field in X Direction) ---
+# Dynamics + Mutual Information in ground state
+
+H = 0
+J = -1
+h = 1
+N = 10
+t = np.linspace(0, 100, 2000)
+t_min = 80
+start_index = np.searchsorted(t, t_min)
+t1 = t[start_index:]
+
+
+# Build Hamiltonian for transverse-field Ising model
+for i in range(N - 1):
+    H += -J * pauli_add(sz, i, N) * pauli_add(sz, i + 1, N)
+for i in range(N):
+    H += h * pauli_add(sx, i, N)
+
+# Random product state
+single_qubit_states = [rand_ket(2) for _ in range(N)]
+psi0 = tensor(single_qubit_states)
+
+# Time evolution
+result = mesolve(H, psi0, t, [], [])
+
+# ⟨σ_z⟩ per site over time
+exp_z = []
+for i in range(N):
+    sz_i = pauli_add(sz, i, N)
+    exp_z.append(expect(sz_i, result.states))
+
+exp_z1 = [exp[start_index:] for exp in exp_z]
+
+# Ground state & mutual information between qubit 0 and others
+evals, evecs = H.eigenstates()
+gs = evecs[0]
+I_list = []
+
+for j in range(1, N):
+    i = 0
+    rho_ij = gs.ptrace([i, j])
+    rho_i = gs.ptrace([i])
+    rho_j = gs.ptrace([j])
+    S_ij = entropy_vn(rho_ij)
+    S_i = entropy_vn(rho_i)
+    S_j = entropy_vn(rho_j)
+    If = S_i + S_j - S_ij
+    I_list.append(If)
+
+# Plot mutual information vs distance
+plt.figure()
+plt.plot(range(1, N), I_list, 'o-')
+plt.xlabel("Qubit Distance")
+plt.ylabel("Mutual Information")
+plt.title(f"Mutual Information vs Distance (h = {h})")
+plt.grid(True)
+plt.show()
+
+# Plot ⟨σ_z⟩ dynamics
+plt.figure()
+for i in range(N):
+    plt.plot(t1, exp_z1[i], label=f'Qubit {i}')
+plt.xlabel('Time')
+plt.ylabel(r'$\langle \sigma_z \rangle$')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+#%%
+# --- Ground State Properties of Transverse Ising Model ---
+# Scan over transverse field h to detect quantum phase transition
+
+hs = np.linspace(0, 2, 100)
+J = -1
+N = 6
+partition_size = N // 2
+
+S = []          # Entanglement entropy (half chain)
+mz = []         # Average ⟨σ_z⟩
+mx = []         # Average ⟨σ_x⟩
+I_ABlist = []   # Mutual information between qubit 0 and 1
+
+qubit_A = 0
+qubit_B = 1
+
+for h in hs:
+    H = 0
+    for i in range(N - 1):
+        H += -J * pauli_add(sz, i, N) * pauli_add(sz, i + 1, N)
+    for i in range(N):
+        H += h * pauli_add(sx, i, N)
+
+    evals, evecs = H.eigenstates()
+    gs = evecs[0]
+
+    # Magnetizations
+    exp_z = [expect(pauli_add(sz, i, N), gs) for i in range(N)]
+    exp_x = [expect(pauli_add(sx, i, N), gs) for i in range(N)]
+    mz.append(np.mean(exp_z))
+    mx.append(np.mean(exp_x))
+
+    # Entropy of half the chain
+    rho_sub = gs.ptrace(list(range(partition_size)))
+    S.append(entropy_vn(rho_sub))
+
+    # Mutual information I(A:B)
+    rho_AB = gs.ptrace([qubit_A, qubit_B])
+    rho_A = gs.ptrace([qubit_A])
+    rho_B = gs.ptrace([qubit_B])
+    S_AB = entropy_vn(rho_AB)
+    S_A = entropy_vn(rho_A)
+    S_B = entropy_vn(rho_B)
+    I_AB = S_A + S_B - S_AB
+    I_ABlist.append(I_AB)
+
+# Plot magnetization curves
+plt.figure(figsize=(8, 5))
+plt.plot(hs, mz, label=r'$\langle \sigma_z \rangle$', linewidth=2)
+plt.plot(hs, mx, label=r'$\langle \sigma_x \rangle$', linewidth=2)
+plt.xlabel("Transverse field h")
+plt.ylabel("Average magnetization")
+plt.title(f"Quantum Phase Transition (N = {N})")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Plot entanglement entropy peak near critical point
+plt.figure()
+plt.plot(hs, S)
+plt.xlabel("Transverse Field h")
+plt.ylabel("Entanglement Entropy")
+plt.title("Entropy Peak at Quantum Critical Point")
+plt.grid(True)
+plt.show()
+
+# Plot mutual information vs h
+plt.figure()
+plt.plot(hs, I_ABlist, label=f'I({qubit_A}:{qubit_B})')
+plt.xlabel("Transverse Field h")
+plt.ylabel("Mutual Information")
+plt.title("Mutual Information vs Transverse Field")
+plt.grid(True)
+plt.legend()
+plt.show()
