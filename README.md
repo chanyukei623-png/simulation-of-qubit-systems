@@ -113,3 +113,5 @@ fig9 — Magnetization vs h
 fig10 — Entropy peak near critical point
 
 fig11 — Mutual information vs h
+## Requirements
+Python, matplotlib, numpy, qutip
