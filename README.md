@@ -16,7 +16,7 @@ T1 decay (relaxation)
 
 T2 dephasing
 
-Figure: fig0 — Excited state probability over time
+#Figure: fig0 — Excited state probability over time
 
 --Bloch Sphere Trajectory
 
