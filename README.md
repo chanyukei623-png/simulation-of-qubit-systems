@@ -6,7 +6,7 @@ A Python-based simulation toolkit for exploring quantum systems such as:
 - Spin chains
 - Quantum phase transitions
 ## Overview of Simulations
---Single Qubit Driven by Oscillating Field + Decoherence
+**Single Qubit Driven by Oscillating Field + Decoherence**
 
 Time-dependent Hamiltonian: H(t) = H₀ + cos(ωt) σₓ
 
