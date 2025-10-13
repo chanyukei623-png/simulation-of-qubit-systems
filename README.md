@@ -16,7 +16,7 @@ T1 decay (relaxation)
 
 T2 dephasing
 
-#Figure: fig0 — Excited state probability over time
+Figure: fig0 — Excited state probability over time
 
 --Bloch Sphere Trajectory
 
@@ -40,7 +40,7 @@ Projects state onto the rotating |0(t)⟩ basis
 
 Highlights how the rotating frame can simplify dynamics
 
-No saved figure (use .savefig() if needed)
+No saved figure
 
 --Two-Qubit Driven System
 
